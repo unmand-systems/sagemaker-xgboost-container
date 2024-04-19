@@ -12,15 +12,19 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
-import textwrap
-
+import json
+import numpy as np
 from sagemaker_containers.beta.framework import encoders
 from sagemaker_inference import content_types, default_inference_handler
 from sagemaker_inference.default_handler_service import DefaultHandlerService
 from sagemaker_inference.transformer import Transformer
+from sagemaker.base_serializers import JSONSerializer
+from sagemaker.base_deserializers import NumpyDeserializer
+
+
 
 from sagemaker_xgboost_container import encoder as xgb_encoders
-
+import xgboost as xgb
 
 class HandlerService(DefaultHandlerService):
     """Handler service that is executed by the model server.
@@ -39,14 +43,10 @@ class HandlerService(DefaultHandlerService):
                 model_dir: a directory where model is saved.
             Returns: A XGBoost model.
             """
-            raise NotImplementedError(
-                textwrap.dedent(
-                    """
-            Please provide a model_fn implementation.
-            See documentation for model_fn at https://github.com/aws/sagemaker-python-sdk
-            """
-                )
-            )
+            model_file = "xgboost-model.json"
+            booster = xgb.XGBClassifier()
+            booster.load_model(model_file)
+            return booster
 
         def default_input_fn(self, input_data, content_type):
             """Take request data and de-serializes the data into an object for prediction.
@@ -61,6 +61,10 @@ class HandlerService(DefaultHandlerService):
             Returns:
                 (obj): data ready for prediction. For XGBoost, this defaults to DMatrix.
             """
+            if content_type == "application/json":
+                return np.array(json.loads(input_data))
+            if content_type == "application/x-npy":
+                return NumpyDeserializer().deserialize(input_data, content_type=content_type)
             return xgb_encoders.decode(input_data, content_type)
 
         def default_predict_fn(self, input_data, model):
@@ -70,8 +74,8 @@ class HandlerService(DefaultHandlerService):
                 model: XGBoost model loaded in memory by model_fn
             Returns: a prediction
             """
-            output = model.predict(input_data, validate_features=False)
-            return output
+            return model.predict_proba(input_data)
+
 
         def default_output_fn(self, prediction, accept):
             """Function responsible to serialize the prediction for the response.
@@ -81,6 +85,14 @@ class HandlerService(DefaultHandlerService):
             Returns:
                 encoded response for MMS to return to client
             """
+            if accept == "application/json":
+                labels = np.argmax(prediction, axis=1)
+                probabilities = np.amax(prediction, axis=1)
+                return JSONSerializer().serialize({
+                        'labels': list(labels),
+                        'probabilities': list(probabilities),
+                    })
+
             encoded_prediction = encoders.encode(prediction, accept)
             if accept == content_types.CSV:
                 encoded_prediction = encoded_prediction.encode("utf-8")
