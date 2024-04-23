@@ -2,6 +2,7 @@ dist/
 build/
 src/sagemaker_xgboost_container.egg-info/
 .venv
+venv/
 *~
 .tox
 __pycache__
