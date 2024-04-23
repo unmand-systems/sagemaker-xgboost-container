@@ -18,9 +18,6 @@ from sagemaker_containers.beta.framework import encoders
 from sagemaker_inference import content_types, default_inference_handler
 from sagemaker_inference.default_handler_service import DefaultHandlerService
 from sagemaker_inference.transformer import Transformer
-from sagemaker.base_serializers import JSONSerializer
-from sagemaker.base_deserializers import NumpyDeserializer
-
 
 
 from sagemaker_xgboost_container import encoder as xgb_encoders
@@ -63,8 +60,6 @@ class HandlerService(DefaultHandlerService):
             """
             if content_type == "application/json":
                 return np.array(json.loads(input_data))
-            if content_type == "application/x-npy":
-                return NumpyDeserializer().deserialize(input_data, content_type=content_type)
             return xgb_encoders.decode(input_data, content_type)
 
         def default_predict_fn(self, input_data, model):
@@ -88,9 +83,9 @@ class HandlerService(DefaultHandlerService):
             if accept == "application/json":
                 labels = np.argmax(prediction, axis=1)
                 probabilities = np.amax(prediction, axis=1)
-                return JSONSerializer().serialize({
-                        'labels': list(labels),
-                        'probabilities': list(probabilities),
+                return json.dumps({
+                        'labels': labels.tolist(),
+                        'probabilities': probabilities.tolist(),
                     })
 
             encoded_prediction = encoders.encode(prediction, accept)

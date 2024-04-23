@@ -142,7 +142,7 @@ def start_mxnet_model_server():
 
     if serving_env.module_name is None:
         logging.info("Starting MXNet server in algorithm mode.")
-        _start_model_server(is_multi_model, ALGO_HANDLER_SERVICE)
+        _start_model_server(is_multi_model, USER_HANDLER_SERVICE)
     else:
         logging.info("Staring MXNet Model Server with user module.")
         # Install user module from s3 to import
