@@ -23,7 +23,17 @@ pip install -r requirements.txt --no-build-isolation
 docker buildx build --platform linux/amd64 -t xgboost-container-base:1.7-1-cpu-py3 -f docker/1.7-1/base/Dockerfile.cpu .
 python3 setup.py bdist_wheel --universal
 
-docker buildx build --platform linux/amd64 -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/1.7-1/final/Dockerfile.cpu .
+TOKEN=$(aws codeartifact get-authorization-token --domain unmand-infrastructure --domain-owner 339712912845 --query authorizationToken --output text --region ap-southeast-2 --profile $AWS_PROFILE)
+
+docker buildx build \
+  --build-arg CODEARTIFACT_TOKEN=$TOKEN \
+  --build-arg CODEARTIFACT_DOMAIN_NAME="unmand-infrastructure" \
+  --build-arg CODEARTIFACT_DOMAIN_OWNER_ID="339712912845" \
+  --build-arg CODEARTIFACT_REPOSITORY_NAME="unmand-packages" \
+  --platform linux/amd64 \
+  -t ${IMAGE_NAME}:${IMAGE_TAG} \
+  -f docker/1.7-1/final/Dockerfile.cpu .
+
 docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${ECR_URL}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # Login to AWS ECR and push the image

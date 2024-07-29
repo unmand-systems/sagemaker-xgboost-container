@@ -1,3 +1,1 @@
---index-url https://pypi.fury.io/unmand/
---extra-index-url https://pypi.python.org/simple
-exfil-core[ml]==1.5.20
+exfil-core[ml]==1.5.23
