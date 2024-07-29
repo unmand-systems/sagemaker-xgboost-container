@@ -23,7 +23,7 @@ pip install -r requirements.txt --no-build-isolation
 docker buildx build --platform linux/amd64 -t xgboost-container-base:1.7-1-cpu-py3 -f docker/1.7-1/base/Dockerfile.cpu .
 python3 setup.py bdist_wheel --universal
 
-docker buildx build --platform linux/amd64 -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/1.7-1/final/Ddocockerfile.cpu .
+docker buildx build --platform linux/amd64 -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/1.7-1/final/Dockerfile.cpu .
 docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${ECR_URL}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # Login to AWS ECR and push the image
